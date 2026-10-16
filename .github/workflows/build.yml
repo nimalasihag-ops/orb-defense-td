@@ -1,0 +1,140 @@
+name: Build Orb Defense APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Auto-Fix Folders and Config Files
+        run: |
+          mkdir -p app/src/main/java/com/southdelhi/orbdefensetd
+
+          # Locate MainActivity.kt anywhere in the repo and place it in the right folder
+          FOUND_KT=$(find . -iname "*MainActivity*.kt" | head -n 1)
+          if [ -z "$FOUND_KT" ]; then
+            echo "ERROR: MainActivity.kt not found! Please create MainActivity.kt and paste the Kotlin game code inside."
+            exit 1
+          fi
+          if [ "$FOUND_KT" != "./app/src/main/java/com/southdelhi/orbdefensetd/MainActivity.kt" ]; then
+            cp "$FOUND_KT" app/src/main/java/com/southdelhi/orbdefensetd/MainActivity.kt
+          fi
+
+          # Remove any accidental markdown backticks (```) from MainActivity.kt
+          sed -i '/^```/d' app/src/main/java/com/southdelhi/orbdefensetd/MainActivity.kt
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "OrbDefenseTD"
+          include(":app")
+          EOF
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          EOF
+
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.southdelhi.orbdefensetd"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "com.southdelhi.orbdefensetd"
+                  minSdk = 29
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0.0"
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="[http://schemas.android.com/apk/res/android](http://schemas.android.com/apk/res/android)">
+              <application
+                  android:allowBackup="true"
+                  android:label="Orb Defense TD 6"
+                  android:hardwareAccelerated="true"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.AppCompat.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:configChanges="orientation|screenSize|keyboardHidden"
+                      android:exported="true"
+                      android:screenOrientation="sensorLandscape">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Compile Android 10+ APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload Ready-to-Install APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrbDefenseTD-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          
